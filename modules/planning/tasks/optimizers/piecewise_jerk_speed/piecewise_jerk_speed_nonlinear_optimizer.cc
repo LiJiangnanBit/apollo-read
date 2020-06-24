@@ -72,6 +72,8 @@ Status PiecewiseJerkSpeedNonlinearOptimizer::Process(
     return Status::OK();
   }
 
+// // 对每个时刻t，根据障碍物的决策，求出s的上下界，还有根据速度信息等，求出一个s的soft上下界。
+// 另外还给一些成员赋值。
   const auto problem_setups_status =
       SetUpStatesAndBounds(path_data, *speed_data);
   if (!problem_setups_status.ok()) {
@@ -84,7 +86,7 @@ Status PiecewiseJerkSpeedNonlinearOptimizer::Process(
   std::vector<double> acceleration;
 
   const auto qp_start = std::chrono::system_clock::now();
-
+// 没有考虑横向加速度限制。
   const auto qp_smooth_status =
       OptimizeByQP(speed_data, &distance, &velocity, &acceleration);
 
@@ -102,6 +104,8 @@ Status PiecewiseJerkSpeedNonlinearOptimizer::Process(
   if (speed_limit_check_status) {
     const auto curvature_smooth_start = std::chrono::system_clock::now();
 
+    // 给smoothed_path_curvature_赋值。里面是离散的曲率、曲率导数、曲率导导数
+    // using piecewise_jerk_path to fit a curve of path kappa profile
     const auto path_curvature_smooth_status = SmoothPathCurvature(path_data);
 
     const auto curvature_smooth_end = std::chrono::system_clock::now();
@@ -117,6 +121,7 @@ Status PiecewiseJerkSpeedNonlinearOptimizer::Process(
 
     const auto speed_limit_smooth_start = std::chrono::system_clock::now();
 
+// 应该是平滑速度限制，是速度关于s的限制，而非t。
     const auto speed_limit_smooth_status = SmoothSpeedLimit();
 
     const auto speed_limit_smooth_end = std::chrono::system_clock::now();
@@ -313,6 +318,7 @@ bool PiecewiseJerkSpeedNonlinearOptimizer::CheckSpeedLimitFeasibility() {
   // a naive check on first point of speed limit
   static constexpr double kEpsilon = 1e-6;
   const double init_speed_limit = speed_limit_.GetSpeedLimitByS(s_init_);
+  // s_dot_init_是车辆当前速度。
   if (init_speed_limit + kEpsilon < s_dot_init_) {
     AERROR << "speed limit [" << init_speed_limit
            << "] lower than initial speed[" << s_dot_init_ << "]";
@@ -326,6 +332,8 @@ Status PiecewiseJerkSpeedNonlinearOptimizer::SmoothSpeedLimit() {
   // TODO(Hongyi): move smooth configs to gflags
   double delta_s = 2.0;
   std::vector<double> speed_ref;
+  // 注意：speed_limit_ = st_graph_data.speed_limit();这个是在speed_bound_decider里面赋值的，是关于s的速度限制，而非t。
+  // 当然也考虑了路径曲率。
   for (int i = 0; i < 100; ++i) {
     double path_s = i * delta_s;
     double limit = speed_limit_.GetSpeedLimitByS(path_s);
@@ -433,8 +441,10 @@ Status PiecewiseJerkSpeedNonlinearOptimizer::OptimizeByQP(
     SpeedData* const speed_data, std::vector<double>* distance,
     std::vector<double>* velocity, std::vector<double>* acceleration) {
   std::array<double, 3> init_states = {s_init_, s_dot_init_, s_ddot_init_};
+  // PiecewiseJerkSpeedProblem和PiecewiseJerkPathProblem都是PiecewiseJerkProblem的派生类。
   PiecewiseJerkSpeedProblem piecewise_jerk_problem(num_of_knots_, delta_t_,
                                                    init_states);
+  // 都是给vector赋值
   piecewise_jerk_problem.set_dx_bounds(
       0.0, std::fmax(FLAGS_planning_upper_speed_limit, init_states[1]));
   piecewise_jerk_problem.set_ddx_bounds(s_ddot_min_, s_ddot_max_);
@@ -448,6 +458,7 @@ Status PiecewiseJerkSpeedNonlinearOptimizer::OptimizeByQP(
   piecewise_jerk_problem.set_weight_ddx(config.acc_weight());
   piecewise_jerk_problem.set_weight_dddx(config.jerk_weight());
 
+// 搜索的参考。
   std::vector<double> x_ref;
   for (int i = 0; i < num_of_knots_; ++i) {
     const double curr_t = i * delta_t_;
@@ -481,6 +492,7 @@ Status PiecewiseJerkSpeedNonlinearOptimizer::OptimizeByNLP(
       total_length_, s_dot_max_, s_ddot_min_, s_ddot_max_, s_dddot_min_,
       s_dddot_max_);
 
+// 每个t的s上下界。
   ptr_interface->set_safety_bounds(s_bounds_);
 
   // Set weights and reference values
@@ -520,6 +532,7 @@ Status PiecewiseJerkSpeedNonlinearOptimizer::OptimizeByNLP(
     // TODO(Jinyun): move to confs
     ptr_interface->set_w_reference_spatial_distance(10.0);
   } else {
+    // 如果不使用dp结果做参考，用最大距离。
     std::vector<double> spatial_potantial(num_of_knots_, total_length_);
     ptr_interface->set_reference_spatial_distance(spatial_potantial);
     ptr_interface->set_w_reference_spatial_distance(
@@ -535,6 +548,7 @@ Status PiecewiseJerkSpeedNonlinearOptimizer::OptimizeByNLP(
   ptr_interface->set_w_overall_j(config.jerk_weight());
   ptr_interface->set_w_overall_centripetal_acc(config.lat_acc_weight());
 
+// 不太懂这个cruise speed，就是一个数字。
   ptr_interface->set_reference_speed(cruise_speed_);
   ptr_interface->set_w_reference_speed(config.ref_v_weight());
 

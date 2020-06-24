@@ -103,6 +103,7 @@ Status PathAssessmentDecider::Process(
     SetPathInfo(*reference_line_info, &curr_path_data);
     // Trim all the lane-borrowing paths so that it ends with an in-lane
     // position.
+    // 如果路径最后是out_of_lane，删除。注意是最后。
     if (curr_path_data.path_label().find("pullover") == std::string::npos) {
       TrimTailingOutLanePoints(&curr_path_data);
     }
@@ -420,7 +421,7 @@ void PathAssessmentDecider::SetPathInfo(
   }
 
   // SetObstacleDistance(reference_line_info, *path_data, &path_decision);
-  赋值给path_data的path_point_decision_guide_
+  // 赋值给path_data的path_point_decision_guide_
   path_data->SetPathPointDecisionGuide(std::move(path_decision));
 }
 

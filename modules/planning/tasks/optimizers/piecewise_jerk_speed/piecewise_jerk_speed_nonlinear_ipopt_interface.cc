@@ -144,12 +144,14 @@ bool PiecewiseJerkSpeedNonlinearIpoptInterface::get_bounds_info(
   // s
   x_l[0] = s_init_;
   x_u[0] = s_init_;
+  // safety_bounds_就是s的硬约束。
   for (int i = 1; i < num_of_points_; ++i) {
     x_l[i] = safety_bounds_[i].first;
     x_u[i] = safety_bounds_[i].second;
   }
 
   // s_dot
+  // 变量的bounds不对速度做限制。
   x_l[v_offset_] = s_dot_init_;
   x_u[v_offset_] = s_dot_init_;
   for (int i = 1; i < num_of_points_; ++i) {
@@ -160,6 +162,7 @@ bool PiecewiseJerkSpeedNonlinearIpoptInterface::get_bounds_info(
   // s_ddot
   x_l[a_offset_] = s_ddot_init_;
   x_u[a_offset_] = s_ddot_init_;
+  // 是由参数确定的。
   for (int i = 1; i < num_of_points_; ++i) {
     x_l[a_offset_ + i] = s_ddot_min_;
     x_u[a_offset_ + i] = s_ddot_max_;

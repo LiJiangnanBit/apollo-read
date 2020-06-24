@@ -52,6 +52,8 @@ OSQPData* PiecewiseJerkProblem::FormulateProblem() {
   std::vector<c_float> P_data;
   std::vector<c_int> P_indices;
   std::vector<c_int> P_indptr;
+    // 计算hessian矩阵，用CSC表示法。
+  // x应该是表示s，所以hessian矩阵包括x部分（应该gradient还有另一部分），速度惩罚，加速度惩罚，加加速度惩罚（通过对加速度差分）
   CalculateKernel(&P_data, &P_indices, &P_indptr);
 
   // calculate affine constraints
@@ -196,7 +198,7 @@ void PiecewiseJerkProblem::CalculateAffineConstraint(
     upper_bounds->at(constraint_index) = 0.0;
     ++constraint_index;
   }
-
+// 三次泰勒展开，然后吧x'''换成(x''(+1) - x''(i)) / ds。
   // x(i+1) - x(i) - delta_s * x(i)'
   // - 1/3 * delta_s^2 * x(i)'' - 1/6 * delta_s^2 * x(i+1)''
   auto delta_s_sq_ = delta_s_ * delta_s_;

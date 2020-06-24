@@ -45,9 +45,13 @@ void PiecewiseJerkSpeedProblem::set_penalty_dx(std::vector<double> penalty_dx) {
 void PiecewiseJerkSpeedProblem::CalculateKernel(std::vector<c_float>* P_data,
                                                 std::vector<c_int>* P_indices,
                                                 std::vector<c_int>* P_indptr) {
+  // 计算hessian矩阵，用CSC表示法。
+  // x应该是表示s，所以hessian矩阵包括x部分（应该gradient还有另一部分），速度惩罚，加速度惩罚，加加速度惩罚（通过对加速度差分）
   const int n = static_cast<int>(num_of_knots_);
   const int kNumParam = 3 * n;
   const int kNumValue = 4 * n - 1;
+  // column外层的index表示矩阵的列，内层的vector里面的元素是一个pair，first是行的index，second是元素值。
+  // 矩阵是3n × 3n
   std::vector<std::vector<std::pair<c_int, c_float>>> columns;
   columns.resize(kNumParam);
   int value_index = 0;
@@ -96,6 +100,8 @@ void PiecewiseJerkSpeedProblem::CalculateKernel(std::vector<c_float>* P_data,
           (scale_factor_[2] * scale_factor_[2]));
   ++value_index;
 
+// 似乎因为只需要表示下三角矩阵，就忽略掉上面的部分了？
+// 为什么有个系数2？
   // -2 * w_dddx / delta_s^2 * x(i)'' * x(i + 1)''
   for (int i = 0; i < n - 1; ++i) {
     columns[2 * n + i].emplace_back(2 * n + i + 1,
@@ -106,6 +112,7 @@ void PiecewiseJerkSpeedProblem::CalculateKernel(std::vector<c_float>* P_data,
 
   CHECK_EQ(value_index, kNumValue);
 
+// CSC稀疏矩阵表示方法。
   int ind_p = 0;
   for (int i = 0; i < kNumParam; ++i) {
     P_indptr->push_back(ind_p);
