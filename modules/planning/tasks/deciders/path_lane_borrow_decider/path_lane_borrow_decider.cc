@@ -37,8 +37,9 @@ PathLaneBorrowDecider::PathLaneBorrowDecider(const TaskConfig& config)
 Status PathLaneBorrowDecider::Process(
   // 执行完这个函数之后，实际上就是修改了 PlanningContext::Instance()
                                           // ->mutable_planning_status()
-                                          // ->mutable_path_decider();的状态（是否要借道，哪个方向）
+                                          // ->mutable_path_decider();的状态（是否要借道，哪个方向可以）
                                           // 另外还有这条车道的is_path_lane_borrow
+                                          // 是否借道没有考虑动态障碍物，单纯是通过左右是否是实线判断的。
     Frame* const frame, ReferenceLineInfo* const reference_line_info) {
   // Sanity checks.
   CHECK_NOTNULL(frame);
@@ -84,6 +85,7 @@ bool PathLaneBorrowDecider::IsNecessaryToBorrowLane(
     if (!HasSingleReferenceLine(frame)) {
       // 注释里写着： This function is to prevent lane-borrowing during lane-changing.
       // 意味着，只有在换道的时候，frame里面才有多于一条参考线？
+      // 只有在“仅有一条参考线”的时候才会借道？如果有多条参考线，则换道？
       return false;
     }
     if (!IsWithinSidePassingSpeedADC(frame)) {
@@ -93,7 +95,7 @@ bool PathLaneBorrowDecider::IsNecessaryToBorrowLane(
 
     // Obstacle condition check for lane-borrowing:
     if (!IsBlockingObstacleFarFromIntersection(reference_line_info)) {
-      // 如果车前方的障碍物在这条车道上，false
+      // IsBlockingObstacleFarFromIntersection：如果前方没有障碍物，或者障碍物距离路口比较远，返回true，此时可以sidepass。
       return false;
     }
     if (!IsLongTermBlockingObstacle()) {
@@ -116,6 +118,8 @@ bool PathLaneBorrowDecider::IsNecessaryToBorrowLane(
       // first time init decided_side_pass_direction
       bool left_borrowable;
       bool right_borrowable;
+      // 从车头位置开始检查，到设定的一个距离。对每个点，检查左边右边是否是实线。如果是，则不可向这个方向借道。输出两个bool，表示能否
+      // 左右借道。
       CheckLaneBorrow(reference_line_info, &left_borrowable, &right_borrowable);
       if (!left_borrowable && !right_borrowable) {
         mutable_path_decider_status->set_is_in_path_lane_borrow_scenario(false);
@@ -286,6 +290,8 @@ bool PathLaneBorrowDecider::IsSidePassableObstacle(
 void PathLaneBorrowDecider::CheckLaneBorrow(
     const ReferenceLineInfo& reference_line_info,
     bool* left_neighbor_lane_borrowable, bool* right_neighbor_lane_borrowable) {
+      // 从车头位置开始检查，到设定的一个距离。对每个点，检查左边右边是否是实线。如果是，则不可向这个方向借道。输出两个bool，表示能否
+      // 左右借道。
   const ReferenceLine& reference_line = reference_line_info.reference_line();
 
   *left_neighbor_lane_borrowable = true;

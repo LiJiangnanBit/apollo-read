@@ -121,6 +121,7 @@ Status LaneChangeDecider::Process(
   bool has_change_lane = reference_line_info->size() > 1;
   ADEBUG << "has_change_lane: " << has_change_lane;
   if (!has_change_lane) {
+    // 如果当前frame中只有一条车道，且prev_status中的状态为正在换道，那么更新状态为换道完成。
     const auto& path_id = reference_line_info->front().Lanes().Id();
     if (prev_status->status() == ChangeLaneStatus::CHANGE_LANE_FINISHED) {
     } else if (prev_status->status() == ChangeLaneStatus::IN_CHANGE_LANE) {
@@ -134,6 +135,7 @@ Status LaneChangeDecider::Process(
     }
     return Status::OK();
   } else {  // has change lane in reference lines.
+    // 车辆当前处于的车道。
     auto current_path_id = GetCurrentPathId(*reference_line_info);
     if (current_path_id.empty()) {
       const std::string msg = "The vehicle is not on any reference line";
@@ -142,11 +144,14 @@ Status LaneChangeDecider::Process(
     }
     if (prev_status->status() == ChangeLaneStatus::IN_CHANGE_LANE) {
       if (prev_status->path_id() == current_path_id) { // 处于变道过程中，并且还没有变过去：
-        PrioritizeChangeLane(true, reference_line_info); // 将
+        PrioritizeChangeLane(true, reference_line_info); 
       } else { // 已经换到了另一条车道：
+      // 可以看出，换道时，当前所在车道一旦与pre_status中的不同，即标记为换道完成。故上面说的，所在车道与prev_status
+      // 中的车道id相同，说明还没有换过去。
         // RemoveChangeLane(reference_line_info);
         PrioritizeChangeLane(false, reference_line_info);
         ADEBUG << "removed change lane.";
+        // 换道完成，将prev_status中的path_id设置为当前车道。
         UpdateStatus(now, ChangeLaneStatus::CHANGE_LANE_FINISHED,
                      current_path_id);
       }
@@ -157,9 +162,11 @@ Status LaneChangeDecider::Process(
       if (now - prev_status->timestamp() <
           lane_change_decider_config.change_lane_fail_freeze_time()) {
         // RemoveChangeLane(reference_line_info);
+        // 如果换道失败，一段时间内不尝试换道。
         PrioritizeChangeLane(false, reference_line_info);
         ADEBUG << "freezed after failed";
       } else {
+        // 一段时间外继续尝试换道。
         UpdateStatus(now, ChangeLaneStatus::IN_CHANGE_LANE, current_path_id);
         ADEBUG << "change lane again after failed";
       }
@@ -169,9 +176,10 @@ Status LaneChangeDecider::Process(
       if (now - prev_status->timestamp() <
           lane_change_decider_config.change_lane_success_freeze_time()) { // 换道完成一次后，需要保持一定时间才能进行下一次换道。
         // RemoveChangeLane(reference_line_info);
-        PrioritizeChangeLane(false, reference_line_info); // 将车所在车道放到首位
+        PrioritizeChangeLane(false, reference_line_info); // false说明不换道，将车所在车道放到首位
         ADEBUG << "freezed after completed lane change";
       } else {
+        // 为啥要进入换道状态？
         PrioritizeChangeLane(true, reference_line_info); 
         UpdateStatus(now, ChangeLaneStatus::IN_CHANGE_LANE, current_path_id);
         ADEBUG << "change lane again after success";
@@ -248,6 +256,8 @@ void LaneChangeDecider::UpdateStatus(double timestamp,
 void LaneChangeDecider::PrioritizeChangeLane(
     const bool is_prioritize_change_lane,
     std::list<ReferenceLineInfo>* reference_line_info) const {
+      // 大概含义是：如果bool参数传入的是true，就把车道线中的换道车道放到首位；
+      // 如果false，则把本车道放到首位。
   if (reference_line_info->empty()) {
     AERROR << "Reference line info empty";
     return;
@@ -273,8 +283,10 @@ void LaneChangeDecider::PrioritizeChangeLane(
     }
     ++iter;
   }
+  // 将iter指向的元素移动到参考路径list的首位。注意，在最外层，是对每条参考线都执行各个tasks。而这里对参考线的顺序做出了调整。
+  // 这里面的逻辑有点不清楚。
   reference_line_info->splice(reference_line_info->begin(),
-                              *reference_line_info, iter); // 将iter指向的元素移动到参考路径list的首位。
+                              *reference_line_info, iter); 
   ADEBUG << "reference_line_info->IsChangeLanePath(): "
          << reference_line_info->begin()->IsChangeLanePath();
 }

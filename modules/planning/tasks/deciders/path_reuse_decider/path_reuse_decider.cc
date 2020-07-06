@@ -41,6 +41,10 @@ PathReuseDecider::PathReuseDecider(const TaskConfig& config)
 
 Status PathReuseDecider::Process(Frame* const frame,
                                  ReferenceLineInfo* const reference_line_info) {
+  // 根据一些条件判断上一周期规划的路径是否可以复用。
+  // 还是参考线的部分不太明白。这里面的上一个周期的规划结果是从const auto& history_frame = FrameHistory::Instance()->Latest()
+  // 得到的，但是上一帧的结果，是根据当前的参考线规划出来的吗？
+  // 执行完之后，修改了reference_line_info的path_reusable_成员。
   // Sanity checks.
   CHECK_NOTNULL(frame);
   CHECK_NOTNULL(reference_line_info);
@@ -110,7 +114,7 @@ Status PathReuseDecider::Process(Frame* const frame,
   //                                          .trajectory_type();
   if (path_reusable_) {
     if (!frame->current_frame_planned_trajectory().is_replan() &&
-        speed_optimization_successful && IsCollisionFree(reference_line_info) &&
+        speed_optimization_successful && IsCollisionFree(reference_line_info) && // 这里的碰撞指静态
         TrimHistoryPath(frame, reference_line_info)) {
       ADEBUG << "reuse path";
       ++reusable_path_counter_;  // count reusable path

@@ -36,6 +36,7 @@ void PiecewiseJerkPathProblem::CalculateKernel(std::vector<c_float>* P_data,
   std::vector<std::vector<std::pair<c_int, c_float>>> columns(num_of_variables);
   int value_index = 0;
 
+  // weight_x_ref_在一般情况下应该为0，只有在pullover时才会用到。
   // x(i)^2 * (w_x + w_x_ref)
   for (int i = 0; i < n - 1; ++i) {
     columns[i].emplace_back(
@@ -60,6 +61,8 @@ void PiecewiseJerkPathProblem::CalculateKernel(std::vector<c_float>* P_data,
                                       (scale_factor_[1] * scale_factor_[1]));
   ++value_index;
 
+  // 为什么后面dddx的weight都要除以ds的平方？
+  // 因为下面其实在最小化dddx，而dddx是通过ddx的差除以ds得到的。
   auto delta_s_square = delta_s_ * delta_s_;
   // x(i)''^2 * (w_ddx + 2 * w_dddx / delta_s^2)
   columns[2 * n].emplace_back(2 * n,

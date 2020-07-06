@@ -46,6 +46,7 @@ void CartesianFrenetConverter::cartesian_to_frenet(
   const double cos_delta_theta = std::cos(delta_theta);
 
   const double one_minus_kappa_r_d = 1 - rkappa * ptr_d_condition->at(0);
+  // d关于s的导数。
   ptr_d_condition->at(1) = one_minus_kappa_r_d * tan_delta_theta;
 
   const double kappa_r_d_prime =
@@ -58,6 +59,7 @@ void CartesianFrenetConverter::cartesian_to_frenet(
 
   ptr_s_condition->at(0) = rs;
 
+// s关于t的导数。
   ptr_s_condition->at(1) = v * cos_delta_theta / one_minus_kappa_r_d;
 
   const double delta_theta_prime =

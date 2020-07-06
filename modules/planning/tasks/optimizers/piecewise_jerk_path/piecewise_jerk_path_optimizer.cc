@@ -56,6 +56,7 @@ common::Status PiecewiseJerkPathOptimizer::Process(
     planning_start_point =
         InferFrontAxeCenterFromRearAxeCenter(planning_start_point);
   }
+  // init_frenet_state是一个pair，first表示纵向s的状态（012阶导数，相对于t），second表示横向l的状态（导数相对于s）
   const auto init_frenet_state =
       reference_line.ToFrenetFrame(planning_start_point);
 
@@ -69,8 +70,8 @@ common::Status PiecewiseJerkPathOptimizer::Process(
   std::array<double, 5> w = {
       piecewise_jerk_path_config.l_weight(),
       piecewise_jerk_path_config.dl_weight() *
-          std::fmax(init_frenet_state.first[1] * init_frenet_state.first[1],
-                    5.0),
+          std::fmax(init_frenet_state.first[1] * init_frenet_state.first[1], // init_frenet_state.first[1]表示沿着参考线的速度。
+                    5.0), // 速度越大，dl的权重越大，即尽量减小横向速度。
       piecewise_jerk_path_config.ddl_weight(),
       piecewise_jerk_path_config.dddl_weight(), 0.0};
 
@@ -118,6 +119,7 @@ common::Status PiecewiseJerkPathOptimizer::Process(
 
     const auto& veh_param =
         common::VehicleConfigHelper::GetConfig().vehicle_param();
+    // 下面的公式是计算曲率，为什么变量名会是横向加速度？
     const double lat_acc_bound =
         std::tan(veh_param.max_steer_angle() / veh_param.steer_ratio()) /
         veh_param.wheel_base();
@@ -126,10 +128,12 @@ common::Status PiecewiseJerkPathOptimizer::Process(
       double s = static_cast<double>(i) * path_boundary.delta_s() +
                  path_boundary.start_s();
       double kappa = reference_line.GetNearestReferencePoint(s).kappa();
+      // 看来ddl表示车辆的转向曲率与参考线曲率的差。
       ddl_bounds.emplace_back(-lat_acc_bound - kappa, lat_acc_bound - kappa);
     }
 
     bool res_opt =
+    // 为什么第一个参数特意输入了当前沿着参考线的速度？
         OptimizePath(init_frenet_state.second, end_state,
                      path_boundary.delta_s(), path_boundary.boundary(),
                      ddl_bounds, w, &opt_l, &opt_dl, &opt_ddl, max_iter);
@@ -211,8 +215,11 @@ bool PiecewiseJerkPathOptimizer::OptimizePath(
                                                   delta_s, init_state);
 
   // TODO(Hongyi): update end_state settings
+  // 第一个array是weight，也就是说只对横向位置有要求吗？
+  // 第二个array是终点状态，除了pullover，一般情况都是三个0，分别表示横向位置及其1,2阶导数。
   piecewise_jerk_problem.set_end_state_ref({1000.0, 0.0, 0.0}, end_state);
   if (end_state[0] != 0) {
+    // 如果靠边停车，那么将xref全都设置为停车位置的l。
     std::vector<double> x_ref(lat_boundaries.size(), end_state[0]);
     const auto& pull_over_type = PlanningContext::Instance()
                                      ->planning_status()
@@ -228,13 +235,18 @@ bool PiecewiseJerkPathOptimizer::OptimizePath(
   piecewise_jerk_problem.set_weight_ddx(w[2]);
   piecewise_jerk_problem.set_weight_dddx(w[3]);
 
+// 这个什么意思？
   piecewise_jerk_problem.set_scale_factor({1.0, 10.0, 100.0});
 
   auto start_time = std::chrono::system_clock::now();
 
+  // 边界确实是用的path_bounds_decider里面的结果....但是这个方法没哟考虑车的尺寸吗？怎么保证无碰撞？
   piecewise_jerk_problem.set_x_bounds(lat_boundaries);
+  // 默认值是2.
   piecewise_jerk_problem.set_dx_bounds(-FLAGS_lateral_derivative_bound_default,
                                        FLAGS_lateral_derivative_bound_default);
+  // dd表示曲率，这里用的是车辆曲率与参考线曲率的差。
+  // 问题：难道最小化的不是车辆的曲率，而是车辆曲率与参考线的差？看约束是怎么加的。
   piecewise_jerk_problem.set_ddx_bounds(ddl_bounds);
   piecewise_jerk_problem.set_dddx_bound(FLAGS_lateral_jerk_bound);
 

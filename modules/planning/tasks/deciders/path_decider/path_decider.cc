@@ -45,6 +45,8 @@ Status PathDecider::Execute(Frame *frame,
 Status PathDecider::Process(const ReferenceLineInfo *reference_line_info,
                             const PathData &path_data,
                             PathDecision *const path_decision) {
+                              // 根据路径，对障碍物做标记。包括ignore（路径距离障碍物比较远）；stop（估计是障碍物把道路堵住了？）
+                              // left_nudge（距离障碍物左边太近），right_nudge（距离障碍物右边太近）。
   // skip path_decider if reused path
   if (FLAGS_enable_skip_path_tasks && reference_line_info->path_reusable()) {
     return Status::OK();
@@ -87,6 +89,8 @@ bool PathDecider::MakeStaticObstacleDecision(
   }
   const double half_width =
       common::VehicleConfigHelper::GetConfig().vehicle_param().width() / 2.0;
+      // FLAGS_lateral_ignore_buffer的介绍： "If an obstacle's lateral distance is further away than this "
+              // "distance, ignore it" 默认是3.
   const double lateral_radius = half_width + FLAGS_lateral_ignore_buffer;
 
   // Go through every obstacle and make decisions.
@@ -145,19 +149,23 @@ bool PathDecider::MakeStaticObstacleDecision(
       continue;
     }
 
+    // 障碍物到路径上的投影点。
     const auto frenet_point = frenet_path.GetNearestPoint(sl_boundary);
     const double curr_l = frenet_point.l();
     double min_nudge_l =
         half_width +
         config_.path_decider_config().static_obstacle_buffer() / 2.0;
 
-    if (curr_l - lateral_radius > sl_boundary.end_l() ||
+    // 如果路径上的最近点，离障碍物比较远。这个lateral_radius是车宽一半+3m。
+    // 这种情况下设置为ignore。
+    if (curr_l - lateral_radius > sl_boundary.end_l() || 
         curr_l + lateral_radius < sl_boundary.start_l()) {
       // 1. IGNORE if laterally too far away.
       path_decision->AddLateralDecision("PathDecider/not-in-l", obstacle->Id(),
                                         object_decision);
     } else if (sl_boundary.end_l() >= curr_l - min_nudge_l &&
                sl_boundary.start_l() <= curr_l + min_nudge_l) {
+                //  左边也很近，右边也很近？咋回事？
       // 2. STOP if laterally too overlapping.
       *object_decision.mutable_stop() = GenerateObjectStopDecision(*obstacle);
 
@@ -174,6 +182,7 @@ bool PathDecider::MakeStaticObstacleDecision(
                                                obstacle->Id(), object_decision);
       }
     } else {
+      // 如果路径比较靠近障碍物左侧，那么标记为left_nudge。右侧同理。
       // 3. NUDGE if laterally very close.
       if (sl_boundary.end_l() < curr_l - min_nudge_l) {  // &&
         // sl_boundary.end_l() > curr_l - min_nudge_l - 0.3) {

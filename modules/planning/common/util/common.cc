@@ -57,7 +57,7 @@ int BuildStopDecision(const std::string& stop_wall_id, const double stop_line_s,
   // build stop decision
   const double stop_s = stop_line_s - stop_distance;
   const auto& stop_point = reference_line.GetReferencePoint(stop_s);
-  const double stop_heading =
+  const double stop_heading = 
       reference_line.GetReferencePoint(stop_s).heading();
 
   ObjectDecisionType stop;

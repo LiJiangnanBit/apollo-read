@@ -58,6 +58,7 @@ apollo::common::Status RuleBasedStopDecider::Process(
   }
 
   // 3. Rule_based stop at path end position
+  // 原来停车是这个原理。路径规划的时候没有考虑终点是否有碰撞，而是在规划完之后，在终点加一个虚拟障碍物。
   AddPathEndStop(frame, reference_line_info);
 
   return Status::OK();
@@ -150,8 +151,11 @@ void RuleBasedStopDecider::StopOnSidePass(
     check_clear = false;
   }
 
+  // 如果路径有向反向车道借道的情况，那么需要设置一个虚拟墙。首先找到第一个进入反向车道的点，然后大概找到车头位置。stop_s_on_pathdata大概就是
+  // 车头位置在当前路径的s。
   if (!check_clear &&
       CheckSidePassStop(path_data, *reference_line_info, &stop_s_on_pathdata)) {
+    // 如果感知没有被遮挡，且可以换道安全
     if (!LaneChangeDecider::IsPerceptionBlocked(
             *reference_line_info,
             rule_based_stop_decider_config_.search_beam_length(),
@@ -161,6 +165,8 @@ void RuleBasedStopDecider::StopOnSidePass(
         LaneChangeDecider::IsClearToChangeLane(reference_line_info)) {
       return;
     }
+    // 下面这个函数检查当前车头位置到stop点的距离，如果大于某个预设值，则false。
+    // 所以如果到这个停止点距离较远，才会设置虚拟墙。
     if (!CheckADCStop(path_data, *reference_line_info, stop_s_on_pathdata)) {
       if (!BuildSidePassStopFence(path_data, stop_s_on_pathdata,
                                   &change_lane_stop_path_point, frame,
@@ -179,6 +185,10 @@ void RuleBasedStopDecider::StopOnSidePass(
 bool RuleBasedStopDecider::CheckSidePassStop(
     const PathData &path_data, const ReferenceLineInfo &reference_line_info,
     double *stop_s_on_pathdata) {
+      
+      // path_point_decision_guide是在path_assessment_decider里面赋值的，虽然
+      // 里面的元素是三个元素的tuple，但是实际上只用到了前两个：s和路点的type，即在车道内或车道外。
+      // 车道外好像还分同向车道反向车道。
   const std::vector<std::tuple<double, PathData::PathPointType, double>>
       &path_point_decision_guide = path_data.path_point_decision_guide();
   PathData::PathPointType last_path_point_type =
@@ -187,6 +197,8 @@ bool RuleBasedStopDecider::CheckSidePassStop(
     if (last_path_point_type == PathData::PathPointType::IN_LANE &&
         std::get<1>(point_guide) ==
             PathData::PathPointType::OUT_ON_REVERSE_LANE) {
+      // 所以不能向反向车道借道？
+      // 并不。这个函数只是找到可能需要设置虚拟墙的位置，但是如果安全，并不需要设置。
       *stop_s_on_pathdata = std::get<0>(point_guide);
       // Approximate the stop fence s based on the vehicle position
       const auto &vehicle_config =
@@ -206,6 +218,7 @@ bool RuleBasedStopDecider::CheckSidePassStop(
           shift_vec + Vec2d(stop_pathpoint.x(), stop_pathpoint.y());
       double stop_l_on_pathdata = 0.0;
       const auto &nearby_path = reference_line_info.reference_line().map_path();
+      // 下面这个函数里对stop_s_on_pathdata重新赋值了，用的是考虑车辆外形之后的路点。
       nearby_path.GetNearestPoint(stop_fence_pose, stop_s_on_pathdata,
                                   &stop_l_on_pathdata);
       return true;
@@ -261,13 +274,13 @@ bool RuleBasedStopDecider::CheckADCStop(
     return false;
   }
 
-  // check stop close enough to stop line of the stop_sign
+ // check stop close enough to stop line of the stop_sign
   const double adc_front_edge_s = reference_line_info.AdcSlBoundary().end_s();
   const auto &nearby_path = reference_line_info.reference_line().map_path();
   double stop_point_s = 0.0;
   double stop_point_l = 0.0;
   nearby_path.GetNearestPoint({stop_point.x(), stop_point.y()}, &stop_point_s,
-                              &stop_point_l);
+                              &stop_point_l); 
 
   const double distance_stop_line_to_adc_front_edge =
       stop_point_s - adc_front_edge_s;

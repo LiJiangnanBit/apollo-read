@@ -226,6 +226,7 @@ class ReferenceLine {
    * This speed limit overrides the lane speed limit
    **/
   std::vector<SpeedLimit> speed_limit_;
+  // 下面这两个其实内容是一样的，从构造函数可以看出来。并且都是经过平滑过后的。
   std::vector<ReferencePoint> reference_points_;
   hdmap::Path map_path_;
   uint32_t priority_ = 0;

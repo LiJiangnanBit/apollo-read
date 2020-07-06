@@ -47,6 +47,9 @@ PathAssessmentDecider::PathAssessmentDecider(const TaskConfig& config)
 
 Status PathAssessmentDecider::Process(
     Frame* const frame, ReferenceLineInfo* const reference_line_info) {
+      // 主要是根据候选路径按照一定标准选择最好的路径，将这条路径更新到参考线的path_data里面。
+      // 除此之外，其他的候选路径也被更新到参考线的一个成员里。
+      // 如果被选择的路径有借道，还会更新planning_status的借道方向。
   // Sanity checks.
   CHECK_NOTNULL(frame);
   CHECK_NOTNULL(reference_line_info);
@@ -70,6 +73,7 @@ Status PathAssessmentDecider::Process(
     // RecordDebugInfo(curr_path_data, curr_path_data.path_label(),
     //                 reference_line_info);
     if (curr_path_data.path_label().find("fallback") != std::string::npos) {
+      // 备用路径不需要检测碰撞？
       if (IsValidFallbackPath(*reference_line_info, curr_path_data)) {
         valid_path_data.push_back(curr_path_data);
       }
@@ -90,6 +94,7 @@ Status PathAssessmentDecider::Process(
   for (size_t i = 0; i != valid_path_data.size(); ++i) {
     auto& curr_path_data = valid_path_data[i];
     if (curr_path_data.path_label().find("fallback") != std::string::npos) {
+      // 备用path。
       // remove empty path_data.
       if (!curr_path_data.Empty()) {
         if (cnt != i) {
@@ -110,6 +115,7 @@ Status PathAssessmentDecider::Process(
 
     // find blocking_obstacle_on_selflane, to be used for lane selection later
     if (curr_path_data.path_label().find("self") != std::string::npos) {
+      // 如果没有借道。
       const auto blocking_obstacle_id = curr_path_data.blocking_obstacle_id();
       blocking_obstacle_on_selflane =
           reference_line_info->path_decision()->Find(blocking_obstacle_id);
@@ -159,6 +165,7 @@ Status PathAssessmentDecider::Process(
   ADEBUG << "Time for optimal path selection: " << diff.count() * 1000
          << " msec.";
 
+// 虽然用最好的路径更新了参考线的path_data，但是还是将所有的可用路径对参考线的候选路径赋值。
   reference_line_info->SetCandidatePathData(std::move(valid_path_data)); // 注意这个赋值
 
   // 4. Update necessary info for lane-borrow decider's future uses.
@@ -169,6 +176,7 @@ Status PathAssessmentDecider::Process(
   if (reference_line_info->GetBlockingObstacle() != nullptr) {
     int front_static_obstacle_cycle_counter =
         mutable_path_decider_status->front_static_obstacle_cycle_counter();
+        // 将这个counter加1，且设置为0~10之间。应该是表示道路前方有障碍物堵死的计数。
     mutable_path_decider_status->set_front_static_obstacle_cycle_counter(
         std::max(front_static_obstacle_cycle_counter, 0));
     mutable_path_decider_status->set_front_static_obstacle_cycle_counter(
@@ -187,9 +195,11 @@ Status PathAssessmentDecider::Process(
   // Update self-lane usage info.
   if (reference_line_info->path_data().path_label().find("self") !=
       std::string::npos) {
+        // 如果本车道行驶。
     // && std::get<1>(reference_line_info->path_data()
     //                 .path_point_decision_guide()
     //                 .front()) == PathData::PathPointType::IN_LANE)
+    // 更新一个本车道行驶的计数。
     int able_to_use_self_lane_counter =
         mutable_path_decider_status->able_to_use_self_lane_counter();
 
@@ -206,6 +216,8 @@ Status PathAssessmentDecider::Process(
   if (mutable_path_decider_status->is_in_path_lane_borrow_scenario()) {
     bool left_borrow = false;
     bool right_borrow = false;
+    // 下面这个是在lane_borrow_decider这个task里面确定的。如果左边不是实线，那么可以借道，则有LEFT_BORROW；右边同理。
+    // 意思似乎是，如果路径是向左变道，且能够向左变道，才可以。但是如果一开始就不能向左变道，那应该也不会有向左变道的路径吧？这个逻辑不太明白。
     const auto& path_decider_status =
         PlanningContext::Instance()->planning_status().path_decider();
     for (const auto& lane_borrow_direction :
@@ -222,6 +234,7 @@ Status PathAssessmentDecider::Process(
       }
     }
 
+    // 对于这一条路径，应该只有一个借道方向。
     mutable_path_decider_status->clear_decided_side_pass_direction();
     if (right_borrow) {
       mutable_path_decider_status->add_decided_side_pass_direction(

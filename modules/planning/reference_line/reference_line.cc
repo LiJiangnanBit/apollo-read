@@ -229,6 +229,7 @@ ReferenceLine::ToFrenetFrame(const common::TrajectoryPoint& traj_point) const {
       traj_point.path_point().theta(), traj_point.path_point().kappa(),
       &s_condition, &l_condition);
 
+  // 注意对于导数，s是关于t的，而l是关于s的。
   return std::make_pair(s_condition, l_condition);
 }
 
